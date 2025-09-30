@@ -1,0 +1,13 @@
+rules:
+  - id: missing-authz-check
+    message: Potential missing authorization check
+    severity: HIGH
+    languages: [python, javascript, typescript]
+    pattern-either:
+      - pattern: |
+          def $F(...):
+              ... # no authz
+      - pattern: |
+          router.$METHOD($ROUTE, (req, res) => {
+              ... // no authz
+          })

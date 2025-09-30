@@ -1,0 +1,4 @@
+rules:
+  - scanners/semgrep/rules/secrets.yml
+  - scanners/semgrep/rules/input_validation.yml
+  - scanners/semgrep/rules/authz.yml

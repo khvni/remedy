@@ -1,0 +1,6 @@
+rules:
+  - id: express-missing-validation
+    pattern: app.$METHOD($ROUTE, (req, res) => {...})
+    message: Missing input validation for Express route
+    severity: MEDIUM
+    languages: [javascript, typescript]
