@@ -85,7 +85,7 @@ make up            # starts api, worker, db, redis, web
 make migrate       # apply Alembic migrations
 ```
 
-The API becomes available at `http://localhost:8000`, the dashboard at `http://localhost:5173`.
+The API becomes available at `http://localhost:8002`, the dashboard at `http://localhost:5175`.
 
 ### Option B: Native
 
@@ -124,6 +124,187 @@ The tests stand up an in-memory SQLite database, replace the Redis queue with a 
 - **Webhooks**: expose `/webhooks/github` over HTTPS (TLS termination via load balancer/ingress). The handler validates `X-Hub-Signature-256` using `GITHUB_WEBHOOK_SECRET`.
 - **Scaling**: run multiple RQ workers for throughput; add observability (logs/metrics) and timeouts around scanner execution.
 - **Security**: sandbox scanner execution if possible (containers with limited permissions), and audit generated patches before pushing to production repos.
+
+## Testing & Demo Guide
+
+### Quick Start Testing
+
+1. **Ensure environment is configured:**
+   ```bash
+   # Check .env contains valid credentials
+   cat .env | grep -E "(GITHUB_APP_ID|GEMINI_API_KEY|DATABASE_URL|REDIS_URL)"
+   ```
+
+2. **Start the full stack:**
+   ```bash
+   make up            # starts api, worker, db, redis, web
+   make migrate       # apply Alembic migrations
+   ```
+
+3. **Verify services are running:**
+   ```bash
+   # Check API health
+   curl http://localhost:8002/health
+   # Should return: {"ok":true}
+   
+   # Check web dashboard
+   open http://localhost:5175
+   ```
+
+### Testing with Your Repository
+
+#### Option 1: Web Dashboard (Recommended)
+
+1. **Open the dashboard:** `http://localhost:5175`
+2. **Register your repository:**
+   - Click "Add Repository"
+   - Enter: `https://github.com/khvni/juice-shop`
+   - Click "Register"
+3. **Trigger a scan:**
+   - Find your repository in the list
+   - Click "Scan" button
+   - Select scan types: "SAST" (Semgrep) and "SCA" (OSV + Grype)
+   - Click "Start Scan"
+4. **Monitor progress:**
+   - Watch the "Scans" tab for status updates
+   - Check "Findings" tab for discovered vulnerabilities
+   - Look for "Pull Requests" tab for auto-generated fixes
+
+#### Option 2: API Direct Testing
+
+1. **Register repository:**
+   ```bash
+   curl -X POST http://localhost:8002/repos \
+     -H "Content-Type: application/json" \
+     -d '{"url": "https://github.com/khvni/juice-shop"}'
+   ```
+
+2. **Trigger scan:**
+   ```bash
+   # Get the repo_id from the response above
+   curl -X POST http://localhost:8002/scans \
+     -H "Content-Type: application/json" \
+     -d '{"repo_id": "REPO_ID_HERE", "kinds": ["sast", "sca"]}'
+   ```
+
+3. **Check results:**
+   ```bash
+   # List scans
+   curl http://localhost:8002/scans?repo_id=REPO_ID_HERE
+   
+   # List findings
+   curl http://localhost:8002/findings?repo_id=REPO_ID_HERE
+   
+   # List PRs
+   curl http://localhost:8002/prs?repo_id=REPO_ID_HERE
+   ```
+
+#### Option 3: CLI Testing (Quick Scan)
+
+```bash
+# Quick scan without full stack
+python cli/remedy.py scan https://github.com/khvni/juice-shop
+```
+
+### What to Expect
+
+#### SAST Scan (Semgrep)
+- **Finds:** Code vulnerabilities, security anti-patterns, hardcoded secrets
+- **Example findings:** SQL injection, XSS, insecure random, hardcoded passwords
+- **Time:** 1-3 minutes depending on repo size
+
+#### SCA Scan (OSV + Grype)
+- **Finds:** Vulnerable dependencies, outdated packages, known CVEs
+- **Example findings:** CVE-2023-1234 in express@4.17.1, vulnerable lodash version
+- **Time:** 2-5 minutes depending on dependency count
+
+#### AI Processing (Gemini)
+- **Prioritizes:** Findings by severity and exploitability
+- **Plans:** Minimal patches to fix vulnerabilities
+- **Creates:** Pull requests with automated fixes
+
+### Monitoring & Debugging
+
+#### Check Worker Logs
+```bash
+# View worker container logs
+docker compose -f infra/compose.yaml logs -f worker
+
+# Look for:
+# - "Worker started" - worker is running
+# - "Running Semgrep..." - SAST scan started
+# - "Running OSV..." - SCA scan started
+# - "Creating branch..." - PR creation started
+```
+
+#### Check API Logs
+```bash
+# View API container logs
+docker compose -f infra/compose.yaml logs -f api
+
+# Look for:
+# - "Repository registered" - repo added successfully
+# - "Scan queued" - scan job created
+# - "Findings stored" - results saved
+```
+
+#### Common Issues & Solutions
+
+1. **"Repository not found" error:**
+   - Ensure the GitHub App is installed on the target repository
+   - Check `GITHUB_APP_ID` and `GITHUB_INSTALLATION_ID` in `.env`
+
+2. **"Scanner not found" error:**
+   - Verify scanner binaries are installed in the worker container
+   - Check worker logs for missing dependencies
+
+3. **"Gemini API error":**
+   - Verify `GEMINI_API_KEY` is valid and has quota
+   - Check API logs for authentication errors
+
+4. **"Database connection failed":**
+   - Ensure PostgreSQL is running: `docker compose -f infra/compose.yaml ps`
+   - Check `DATABASE_URL` in `.env`
+
+5. **"Redis connection failed":**
+   - Ensure Redis is running: `docker compose -f infra/compose.yaml ps`
+   - Check `REDIS_URL` in `.env`
+
+### Expected Results for Juice Shop
+
+The OWASP Juice Shop is a deliberately vulnerable application, so you should see:
+
+#### SAST Findings (Semgrep):
+- SQL injection vulnerabilities
+- XSS vulnerabilities
+- Insecure random number generation
+- Hardcoded secrets
+- Authentication bypasses
+
+#### SCA Findings (OSV + Grype):
+- Vulnerable npm packages
+- Outdated dependencies
+- Known CVEs in dependencies
+
+#### AI-Generated Fixes:
+- Patches for SQL injection (parameterized queries)
+- XSS prevention (input sanitization)
+- Secure random number generation
+- Dependency updates
+
+### Performance Expectations
+
+- **Small repo (< 100 files):** 2-5 minutes total
+- **Medium repo (100-1000 files):** 5-15 minutes total
+- **Large repo (> 1000 files):** 15-30 minutes total
+
+### Next Steps After Testing
+
+1. **Review findings** in the dashboard
+2. **Check generated PRs** in your GitHub repository
+3. **Test the fixes** by reviewing the proposed changes
+4. **Monitor webhook integration** (if configured)
+5. **Scale up** by adding more repositories
 
 ## Demo Checklist
 

@@ -1,0 +1,25 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "apps/web/package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "https://remedy-api.khvni.com/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/apps/web/dist/$1"
+    }
+  ],
+  "env": {
+    "VITE_API_BASE_URL": "https://remedy.khvni.com/api"
+  }
+}

@@ -34,14 +34,32 @@ export type PullRequest = {
   created_at: string;
 };
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000').replace(/\/$/, '');
 
-async function request<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`);
-  if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  try {
+    const response = await fetch(`${API_BASE}${path}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(init?.headers ?? {}),
+      },
+      ...init,
+    });
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      const message = detail || response.statusText || `HTTP ${response.status}`;
+      throw new Error(message);
+    }
+    if (response.status === 204) {
+      return undefined as T;
+    }
+    return (await response.json()) as T;
+  } catch (error) {
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error('Unable to reach Remedy API');
   }
-  return response.json() as Promise<T>;
 }
 
 export function fetchRepos(): Promise<{ items: Repo[] }> {
@@ -64,4 +82,18 @@ export function fetchFindings(repoId?: string, scanId?: string): Promise<Finding
 export function fetchPullRequests(repoId?: string): Promise<PullRequest[]> {
   const query = repoId ? `?repo_id=${encodeURIComponent(repoId)}` : '';
   return request(`/prs${query}`);
+}
+
+export function registerRepo(url: string): Promise<Repo> {
+  return request('/repos', {
+    method: 'POST',
+    body: JSON.stringify({ url }),
+  });
+}
+
+export function triggerScan(repoId: string, kinds: string[] = ['sast', 'sca']): Promise<{ repo_id: string; queued_jobs: string[] }> {
+  return request('/scans', {
+    method: 'POST',
+    body: JSON.stringify({ repo_id: repoId, kinds }),
+  });
 }

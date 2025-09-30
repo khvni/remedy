@@ -8,6 +8,7 @@ from rq import Queue
 from redis import Redis
 from sqlalchemy.orm import Session
 
+from ...worker.tasks import run_scan
 from ..models.repo import Repo
 from ..models.scan import Scan
 
@@ -25,7 +26,7 @@ def start_scan(db: Session, repo_id: str, kinds: Sequence[str]) -> list[str]:
         raise RepoNotFoundError(repo_id)
     job_ids: list[str] = []
     for kind in kinds:
-        job = q.enqueue("apps.worker.tasks.run_scan", repo_id, kind)
+        job = q.enqueue(run_scan, repo_id, kind)
         job_ids.append(job.id)
     return job_ids
 
